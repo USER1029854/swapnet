@@ -6,6 +6,8 @@
 **Chains in scope:** Ethereum (1), Arbitrum One (42161), Base (8453), BNB Chain (56)
 **Verdict:** **CRITICAL — confirmed, exploited in the wild, and structurally unfixable on the immutable members of the family.**
 
+> **Live PoC (added after review):** the flaw was executed against chain state with `debug_traceCall` — see `audit/POC.md`. It is **permissionless** (drains from `0x00…deadbeef`, unrelated to the admin) and **commits at the latest block** (a 1,000,000-USDT drain of a real max-approver). Two honest corrections came out of it: (a) the one "live" ETH row (Truebit) is a **paused** token, so **immediately-realizable exposure right now ≈ $0**; (b) severity is unchanged — the door is open, permissionless, and immutable, and it was already exploited for millions. Realizable-now ($0) and severity (Critical) are different numbers; see `audit/POC.md`.
+>
 > **What this verdict does and does not cover.** The finding below is proven from on-chain
 > behavior (transaction traces + decoded calldata) and confirmed structurally by immutable-bytecode
 > analysis. The contracts are **closed-source**; heimdall's Solidity output for them is garbled
@@ -131,7 +133,7 @@ Critical:
   `SELFDESTRUCT`**. I confirmed the runtime bytecode at a block adjacent to the exploit
   (24304371) is **byte-identical** to today (`sha256` prefix `0d1f828c…` on ETH). *The exact code
   that stole the WBTC is running, unchanged, right now, and cannot be patched, paused, or destroyed.*
-  The only mitigation is per-user approval revocation.
+  The only mitigation is per-user approval revocation. **Confirmed live:** `audit/POC.md` executes `0x67b34120` from an unprivileged address against the latest block and commits a drain.
 - **The router is only mitigated by a mutable switch.** Its implementation pointer is currently
   `0x0` on all four chains (bricked), but the **admin EOA `0x9cb8d9ba…` can restore any
   implementation with a single `upgradeTo` call** — it is the same key that set the pointer to zero
@@ -150,7 +152,7 @@ explicit non-null-response guard — see `audit/check_approvals.py`.)
 
 | Contract | Chain | Approver pairs | **Live-drainable now** | Latent (MAX allowance, 0 balance today) |
 |---|---|---:|---|---|
-| Aperture `0xD83d960d` | ETH | 63 ERC20 + 47 NFT | **1** — `0x530a445c…` **3.47M "Truebit"** (illiquid, no price feed) | USDT×2, WBTC, and others |
+| Aperture `0xD83d960d` | ETH | 63 ERC20 + 47 NFT | **0 realizable** — the 1 live approval (`0x530a445c…`, 3.47M "Truebit") reverts: the token is **paused** (PoC Test B) | USDT×2, WBTC, and others |
 | Aperture `0xD83d960d` | ARB | 94 ERC20 + 79 NFT | 0 | **USDC×9, USDT×5, WETH×4, WBTC×3, ARB×2** |
 | Sibling `0xaf34783a71` | ETH | 46 ERC20 | 0 | USDC×3, LINK, rETH, USDT, RNDR |
 | Router `0x616000` | ETH | 36 ERC20 | 1 dust (RIVER) — **blocked by brick** | USDC×3, USDT×2, RLUSD×2, wstETH, cbBTC, WETH, GHO |
@@ -343,8 +345,11 @@ in the exploit path.
 A permissionless, unguarded arbitrary-external-call primitive in an immutable family of
 position-automation contracts lets anyone drain any user's standing token/position approval. It has
 **already been exploited** (≥ 36.9 WBTC / ~$2.69M directly traced, campaign larger). On the immutable
-Aperture members the bug is **permanent and unfixable**; today's low live-balance is luck, not
-safety, and the blue-chip latent approvals are a standing liability. The router variant is
+Aperture members the bug is **permanent and unfixable**. Verified by live simulation (`audit/POC.md`):
+it is permissionless and commits at the latest block. **Immediately-realizable exposure right now is
+≈ $0** — every current approver is empty or holds a paused token — but that is a transient snapshot,
+not safety: the blue-chip latent approvals are drained the instant those wallets hold a balance, on
+contracts that can never be turned off. The router variant is
 **temporarily neutralized by a mutable, EOA-controlled implementation pointer** that can be reverted
 in one transaction. This is a **Critical** finding whose current dollar exposure is a snapshot with no
 structural floor.
